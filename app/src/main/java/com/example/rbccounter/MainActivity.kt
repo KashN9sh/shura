@@ -82,7 +82,8 @@ private fun RbcCounterScreen() {
         }
     )
 
-    Scaffold { padding ->
+    // Без верхней панели: заголовок уже в контенте
+    Scaffold(topBar = {}) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
