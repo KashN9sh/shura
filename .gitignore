@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+
+# Gradle
+.gradle/
+**/build/
+
+# Local Android SDK/props
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+out/
+
+# NDK / CMake
+.externalNativeBuild/
+.cxx/
+
+# Logs
+*.log
+
+# APK/Bundle outputs
+*.apk
+*.ap_
+*.aab
+
+# Captures
+captures/
+
+# Keystores (не хранить в репозитории)
+*.jks
+*.keystore
+**/keystore.properties
+
+# Profiling dumps
+*.hprof
+
+
