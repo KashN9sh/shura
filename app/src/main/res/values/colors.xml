@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Placeholder: используем динамические цвета Material3 по умолчанию -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="rbc_purple">#6C3BD9</color>
+    <color name="rbc_black">#111111</color>
 </resources>
 
 
