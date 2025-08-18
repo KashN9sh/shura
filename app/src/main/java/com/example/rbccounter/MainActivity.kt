@@ -86,13 +86,44 @@ private fun RbcCounterScreen() {
         }
     )
 
+    // Альтернативный picker с более широким доступом к альбомам
+    val getContentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri ->
+            imageUri = uri
+            count = null
+            if (uri != null) {
+                scope.launch {
+                    isProcessing = true
+                    try {
+                        val b = withContext(Dispatchers.IO) {
+                            context.contentResolver.openInputStream(uri).use { stream ->
+                                BitmapFactory.decodeStream(stream)
+                            }
+                        }
+                        bitmap = b?.let { scaleToMax(it, 1280) }
+                        val (img, n) = bitmap?.let { withContext(Dispatchers.Default) { ImageProcessing.annotatePurpleNuclei(it) } } ?: (null to null)
+                        annotated = img
+                        count = n
+                    } finally {
+                        isProcessing = false
+                    }
+                }
+            }
+        }
+    )
+
     // Проверка разрешений
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             // Разрешение получено, можно открыть галерею
-            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            try {
+                getContentLauncher.launch("image/*")
+            } catch (e: Exception) {
+                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
         }
     }
 
@@ -102,42 +133,73 @@ private fun RbcCounterScreen() {
     ) { permissions ->
         if (permissions.values.all { it }) {
             // Все разрешения получены, можно открыть галерею
-            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            try {
+                getContentLauncher.launch("image/*")
+            } catch (e: Exception) {
+                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
         }
     }
 
-    // Функция для проверки разрешений и открытия галереи
+        // Функция для проверки разрешений и открытия галереи
     fun openGallery() {
         when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
-                // Android 14+ - проверяем оба разрешения
+                // Android 14+ - запрашиваем все медиа разрешения для полного доступа
                 val permissions = arrayOf(
                     Manifest.permission.READ_MEDIA_IMAGES,
-                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+                    Manifest.permission.READ_MEDIA_AUDIO,
+                    Manifest.permission.READ_MEDIA_VIDEO
                 )
                 val allGranted = permissions.all {
                     ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
                 }
                 if (allGranted) {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    // Сначала пробуем GetContent, если не работает - используем PickVisualMedia
+                    try {
+                        getContentLauncher.launch("image/*")
+                    } catch (e: Exception) {
+                        // Fallback к PickVisualMedia
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
                 } else {
                     multiplePermissionsLauncher.launch(permissions)
                 }
             }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
-                // Android 13+ - используем разрешение для изображений
-                val permission = Manifest.permission.READ_MEDIA_IMAGES
-                if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                // Android 13+ - запрашиваем все медиа разрешения
+                val permissions = arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_AUDIO,
+                    Manifest.permission.READ_MEDIA_VIDEO
+                )
+                val allGranted = permissions.all {
+                    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+                }
+                if (allGranted) {
+                    // Сначала пробуем GetContent, если не работает - используем PickVisualMedia
+                    try {
+                        getContentLauncher.launch("image/*")
+                    } catch (e: Exception) {
+                        // Fallback к PickVisualMedia
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
                 } else {
-                    permissionLauncher.launch(permission)
+                    multiplePermissionsLauncher.launch(permissions)
                 }
             }
             else -> {
                 // Android 12 и ниже - используем общее разрешение на чтение внешнего хранилища
                 val permission = Manifest.permission.READ_EXTERNAL_STORAGE
                 if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    // Сначала пробуем GetContent, если не работает - используем PickVisualMedia
+                    try {
+                        getContentLauncher.launch("image/*")
+                    } catch (e: Exception) {
+                        // Fallback к PickVisualMedia
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
                 } else {
                     permissionLauncher.launch(permission)
                 }
@@ -219,9 +281,16 @@ private fun RbcCounterScreen() {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.secondary
                 )
-                OutlinedButton(onClick = {
-                    openGallery()
-                }) { Text("Сменить фото") }
+                Column(horizontalAlignment = Alignment.End) {
+                    OutlinedButton(onClick = {
+                        openGallery()
+                    }) { Text("Сменить фото") }
+                    TextButton(onClick = {
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }) {
+                        Text("Быстрый выбор", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
     }
