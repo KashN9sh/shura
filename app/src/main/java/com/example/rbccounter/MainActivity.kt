@@ -104,6 +104,17 @@ fun RbcCounterApp() {
                 processedImages = processedImages
             )
         }
+        composable("edit/{imageId}") { backStackEntry ->
+            val imageId = backStackEntry.arguments?.getString("imageId")
+            val processedImage = processedImages.find { it.id == imageId }
+            if (processedImage != null) {
+                EditImageScreen(
+                    navController = navController,
+                    processedImage = processedImage,
+                    processedImages = processedImages
+                )
+            }
+        }
     }
 }
 
@@ -692,15 +703,18 @@ private fun GalleryScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(processedImages) { processedImage ->
-                    ProcessedImageCard(
-                        processedImage = processedImage,
-                        dateFormatter = dateFormatter,
-                        onDelete = {
-                            processedImages.remove(processedImage)
+                                        items(processedImages) { processedImage ->
+                            ProcessedImageCard(
+                                processedImage = processedImage,
+                                dateFormatter = dateFormatter,
+                                onDelete = {
+                                    processedImages.remove(processedImage)
+                                },
+                                onEdit = {
+                                    navController.navigate("edit/${processedImage.id}")
+                                }
+                            )
                         }
-                    )
-                }
             }
         }
     }

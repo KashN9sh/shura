@@ -32,7 +32,8 @@ data class ProcessedImage(
 fun ProcessedImageCard(
     processedImage: ProcessedImage,
     dateFormatter: SimpleDateFormat,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
 ) {
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -88,7 +89,8 @@ fun ProcessedImageCard(
             // Действия
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "ID: ${processedImage.id.take(8)}",
@@ -96,8 +98,13 @@ fun ProcessedImageCard(
                     color = MaterialTheme.colorScheme.outline
                 )
 
-                TextButton(onClick = onDelete) {
-                    Text("Удалить", color = MaterialTheme.colorScheme.error)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onEdit) {
+                        Text("Редактировать")
+                    }
+                    TextButton(onClick = onDelete) {
+                        Text("Удалить", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
