@@ -17,9 +17,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +60,26 @@ private fun RbcCounterScreen() {
     var count by remember { mutableStateOf<Int?>(null) }
     var annotated by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
+    var showColorSettings by remember { mutableStateOf(false) }
+
+    // Цветовые параметры с ползунками
+    var hueMin by remember { mutableStateOf(250f) }
+    var hueMax by remember { mutableStateOf(360f) }
+    var saturationMin by remember { mutableStateOf(0.2f) }
+    var valueMin by remember { mutableStateOf(0.12f) }
+        var includeRed by remember { mutableStateOf(true) }
+    var forceUniformMode by remember { mutableStateOf(true) }
+
+    val colorParams = remember(hueMin, hueMax, saturationMin, valueMin, includeRed) {
+        ImageProcessing.ColorParams(
+            hueMin = hueMin,
+            hueMax = hueMax,
+            saturationMin = saturationMin,
+            valueMin = valueMin,
+            includeRed = includeRed,
+            forceUniformMode = forceUniformMode
+        )
+    }
 
     val scope = rememberCoroutineScope()
 
@@ -75,7 +98,9 @@ private fun RbcCounterScreen() {
                             }
                         }
                         bitmap = b?.let { scaleToMax(it, 1280) }
-                        val (img, n) = bitmap?.let { withContext(Dispatchers.Default) { ImageProcessing.annotatePurpleNuclei(it) } } ?: (null to null)
+                        val (img, n) = bitmap?.let { withContext(Dispatchers.Default) {
+                            ImageProcessing.annotateRedBloodCellsWithParams(it, colorParams)
+                        } } ?: (null to null)
                         annotated = img
                         count = n
                     } finally {
@@ -102,7 +127,9 @@ private fun RbcCounterScreen() {
                             }
                         }
                         bitmap = b?.let { scaleToMax(it, 1280) }
-                        val (img, n) = bitmap?.let { withContext(Dispatchers.Default) { ImageProcessing.annotatePurpleNuclei(it) } } ?: (null to null)
+                        val (img, n) = bitmap?.let { withContext(Dispatchers.Default) {
+                            ImageProcessing.annotateRedBloodCellsWithParams(it, colorParams)
+                        } } ?: (null to null)
                         annotated = img
                         count = n
                     } finally {
@@ -112,6 +139,24 @@ private fun RbcCounterScreen() {
             }
         }
     )
+
+    // Функция для пересчета с новыми параметрами
+    fun recalculateWithParams() {
+        if (bitmap != null) {
+            scope.launch {
+                isProcessing = true
+                try {
+                    val (img, n) = withContext(Dispatchers.Default) {
+                        ImageProcessing.annotateRedBloodCellsWithParams(bitmap!!, colorParams)
+                    }
+                    annotated = img
+                    count = n
+                } finally {
+                    isProcessing = false
+                }
+            }
+        }
+    }
 
     // Проверка разрешений
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -213,13 +258,14 @@ private fun RbcCounterScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                 Text(
-                    text = "RBC Counter",
+                    text = "Улучшенный RBC Counter",
                     style = MaterialTheme.typography.titleLarge
                 )
             }
@@ -289,6 +335,172 @@ private fun RbcCounterScreen() {
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }) {
                         Text("Быстрый выбор", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
+            // Кнопка настроек цветов
+            if (imageUri != null) {
+                OutlinedButton(
+                    onClick = { showColorSettings = !showColorSettings },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Tune, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (showColorSettings) "Скрыть настройки" else "Настройки цветов")
+                }
+            }
+
+            // Панель настроек цветов
+            if (showColorSettings && imageUri != null) {
+                OutlinedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 600.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "Настройки детекции цветов",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        // Отладочная информация
+                        Text(
+                            text = "Текущие параметры: H${hueMin.toInt()}-${hueMax.toInt()}°, S${(saturationMin*100).toInt()}%, V${(valueMin*100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+
+                        // Оттенок (Hue)
+                        Column {
+                            Text("Диапазон оттенков", style = MaterialTheme.typography.bodyMedium)
+                            Text("${hueMin.toInt()}° - ${hueMax.toInt()}° (фиолетовый-пурпурный)",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = MaterialTheme.colorScheme.outline)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                                                Slider(
+                                    value = hueMin,
+                                    onValueChange = {
+                                        hueMin = it
+                                        if (hueMin > hueMax) hueMax = hueMin
+                                    },
+                                    onValueChangeFinished = {
+                                        recalculateWithParams()
+                                    },
+                                    valueRange = 0f..360f,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Slider(
+                                    value = hueMax,
+                                    onValueChange = {
+                                        hueMax = it
+                                        if (hueMax < hueMin) hueMin = hueMax
+                                    },
+                                    onValueChangeFinished = {
+                                        recalculateWithParams()
+                                    },
+                                    valueRange = 0f..360f,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        // Насыщенность (Saturation)
+                        Column {
+                            Text("Минимальная насыщенность", style = MaterialTheme.typography.bodyMedium)
+                            Text("${(saturationMin * 100).toInt()}% (яркость цвета)",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = MaterialTheme.colorScheme.outline)
+                            Slider(
+                                value = saturationMin,
+                                onValueChange = { saturationMin = it },
+                                onValueChangeFinished = {
+                                    recalculateWithParams()
+                                },
+                                valueRange = 0f..1f
+                            )
+                        }
+
+                        // Яркость (Value)
+                        Column {
+                            Text("Минимальная яркость", style = MaterialTheme.typography.bodyMedium)
+                            Text("${(valueMin * 100).toInt()}% (светлота цвета)",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = MaterialTheme.colorScheme.outline)
+                            Slider(
+                                value = valueMin,
+                                onValueChange = { valueMin = it },
+                                onValueChangeFinished = {
+                                    recalculateWithParams()
+                                },
+                                valueRange = 0f..1f
+                            )
+                        }
+
+                                                // Включение красного диапазона
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Красный диапазон", style = MaterialTheme.typography.bodyMedium)
+                                Switch(
+                                    checked = includeRed,
+                                    onCheckedChange = {
+                                        includeRed = it
+                                        recalculateWithParams()
+                                    }
+                                )
+                            }
+                            Text("Включает малиновые оттенки (0-30°)",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = MaterialTheme.colorScheme.outline)
+                        }
+
+
+
+                        // Кнопки управления
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { recalculateWithParams() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Применить")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    if (bitmap != null) {
+                                        scope.launch {
+                                            isProcessing = true
+                                            try {
+                                                val debugImg = withContext(Dispatchers.Default) {
+                                                    ImageProcessing.debugColorMaskWithParams(bitmap!!, colorParams)
+                                                }
+                                                annotated = debugImg
+                                                count = null
+                                            } finally {
+                                                isProcessing = false
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Отладка")
+                            }
+                        }
                     }
                 }
             }
