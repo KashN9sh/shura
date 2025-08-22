@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Tune
@@ -44,6 +46,22 @@ import android.graphics.Paint
 import android.graphics.LinearGradient
 import android.graphics.Shader
 import android.graphics.RectF
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.text.style.TextAlign
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +70,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             com.example.rbccounter.ui.theme.RbcTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    RbcCounterScreen()
+                    RbcCounterApp()
                 }
             }
         }
@@ -60,8 +78,41 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+fun RbcCounterApp() {
+    val navController = rememberNavController()
+    val processedImages = remember { mutableStateListOf<ProcessedImage>() }
+
+    NavHost(
+        navController = navController,
+        startDestination = "main"
+    ) {
+        composable("main") {
+            RbcCounterScreen(
+                navController = navController,
+                processedImages = processedImages
+            )
+        }
+        composable("gallery") {
+            GalleryScreen(
+                navController = navController,
+                processedImages = processedImages
+            )
+        }
+        composable("batch") {
+            BatchProcessingScreen(
+                navController = navController,
+                processedImages = processedImages
+            )
+        }
+    }
+}
+
+@Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun RbcCounterScreen() {
+private fun RbcCounterScreen(
+    navController: NavController,
+    processedImages: MutableList<ProcessedImage>
+) {
     val context = LocalContext.current
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -163,6 +214,20 @@ private fun RbcCounterScreen() {
                     isProcessing = false
                 }
             }
+        }
+    }
+
+    // Функция для сохранения результата в галерею
+    fun saveToGallery() {
+        if (bitmap != null && annotated != null && count != null && imageUri != null) {
+            val processedImage = ProcessedImage(
+                uri = imageUri!!,
+                originalBitmap = bitmap!!,
+                annotatedBitmap = annotated!!,
+                cellCount = count!!,
+                colorParams = colorParams
+            )
+            processedImages.add(0, processedImage) // Добавляем в начало списка
         }
     }
 
@@ -336,6 +401,27 @@ private fun RbcCounterScreen() {
                     color = MaterialTheme.colorScheme.secondary
                 )
                 Column(horizontalAlignment = Alignment.End) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            navController.navigate("batch")
+                        }) {
+                            Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Массовая обработка", maxLines = 1)
+                        }
+                        OutlinedButton(onClick = {
+                            navController.navigate("gallery")
+                        }) {
+                            Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        if (count != null) {
+                            Button(onClick = {
+                                saveToGallery()
+                            }) {
+                                Text("Сохранить")
+                            }
+                        }
+                    }
                     OutlinedButton(onClick = {
                         openGallery()
                     }) { Text("Сменить фото") }
@@ -533,102 +619,91 @@ private fun scaleToMax(src: AndroidBitmap, maxSide: Int): AndroidBitmap {
     return if (scale >= 1f) src else AndroidBitmap.createScaledBitmap(src, (w * scale).toInt(), (h * scale).toInt(), true)
 }
 
-/**
- * Создает визуальный индикатор выбранного цветового диапазона
- */
+
+
 @Composable
-private fun ColorRangeIndicator(
-    hueMin: Float,
-    hueMax: Float,
-    saturationMin: Float,
-    valueMin: Float,
-    includeRed: Boolean,
-    modifier: Modifier = Modifier
+@OptIn(ExperimentalMaterial3Api::class)
+private fun GalleryScreen(
+    navController: NavController,
+    processedImages: MutableList<ProcessedImage>
 ) {
-    val width = 300
-    val height = 60
+    val dateFormatter = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
 
-    val colorBitmap = remember(hueMin, hueMax, saturationMin, valueMin, includeRed) {
-        createHueGradientBitmap(width, height, hueMin, hueMax, saturationMin, valueMin, includeRed)
-    }
-
-    Column(modifier = modifier) {
-        Text(
-            text = "Выбранный цветовой диапазон",
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Image(
-            bitmap = colorBitmap.asImageBitmap(),
-            contentDescription = "Color range indicator",
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Верхняя часть = яркие цвета, нижняя = с учетом настроек",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.outline
-        )
-    }
-}
-
-private fun createHueGradientBitmap(
-    width: Int,
-    height: Int,
-    hueMin: Float,
-    hueMax: Float,
-    saturationMin: Float,
-    valueMin: Float,
-    includeRed: Boolean
-): AndroidBitmap {
-    val bitmap = AndroidBitmap.createBitmap(width, height, AndroidBitmap.Config.ARGB_8888)
-    val pixels = IntArray(width * height)
-
-    for (x in 0 until width) {
-        val hue = (x.toFloat() / width) * 360f
-
-        // Проверяем, попадает ли цвет в выбранный диапазон
-        val isInRange = when {
-            includeRed && hue <= 30f -> true  // Красный диапазон
-            hue >= hueMin && hue <= hueMax -> true  // Основной диапазон
-            else -> false
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Галерея обработанных изображений") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = {
+                        // TODO: Добавить массовую обработку - пока переходим на главный экран
+                        navController.popBackStack()
+                    }) {
+                        Text("+ Добавить")
+                    }
+                }
+            )
         }
-
-        if (isInRange) {
-            // Создаем градиент по высоте для показа влияния насыщенности и яркости
-            for (y in 0 until height) {
-                val yRatio = y.toFloat() / height
-
-                // Верхняя половина - показывает цвета с максимальной насыщенностью
-                // Нижняя половина - показывает цвета с минимальной насыщенностью
-                val saturation = if (yRatio < 0.5f) {
-                    1.0f  // Максимальная насыщенность
-                } else {
-                    saturationMin  // Минимальная насыщенность из настроек
+    ) { padding ->
+        if (processedImages.isEmpty()) {
+            // Пустое состояние
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(
+                        Icons.Default.PhotoLibrary,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                    Text(
+                        text = "Галерея пуста",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Text(
+                        text = "Обработайте изображения на главном экране\nи сохраните результаты",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    OutlinedButton(onClick = { navController.popBackStack() }) {
+                        Text("К обработке")
+                    }
                 }
-
-                val value = if (yRatio < 0.5f) {
-                    1.0f  // Максимальная яркость
-                } else {
-                    valueMin  // Минимальная яркость из настроек
-                }
-
-                val color = android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, value))
-                pixels[y * width + x] = color
             }
         } else {
-            // Темный цвет для недетектируемого диапазона
-            val darkColor = android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.2f, 0.2f))
-            for (y in 0 until height) {
-                pixels[y * width + x] = darkColor
+            // Список обработанных изображений
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(processedImages) { processedImage ->
+                    ProcessedImageCard(
+                        processedImage = processedImage,
+                        dateFormatter = dateFormatter,
+                        onDelete = {
+                            processedImages.remove(processedImage)
+                        }
+                    )
+                }
             }
         }
     }
-
-    bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-    return bitmap
 }
 
 
