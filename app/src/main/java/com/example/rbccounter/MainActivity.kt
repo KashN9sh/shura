@@ -411,35 +411,72 @@ private fun RbcCounterScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.secondary
                 )
-                Column(horizontalAlignment = Alignment.End) {
+                                                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Первый ряд - Основные функции
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            navController.navigate("batch")
-                        }) {
-                            Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Массовая обработка", maxLines = 1)
+                        OutlinedButton(
+                            onClick = { navController.navigate("batch") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Массовая",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1
+                            )
                         }
-                        OutlinedButton(onClick = {
-                            navController.navigate("gallery")
-                        }) {
-                            Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                        if (count != null) {
-                            Button(onClick = {
-                                saveToGallery()
-                            }) {
-                                Text("Сохранить")
-                            }
+                        OutlinedButton(
+                            onClick = { navController.navigate("gallery") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Галерея",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1
+                            )
                         }
                     }
-                    OutlinedButton(onClick = {
-                        openGallery()
-                    }) { Text("Сменить фото") }
-                    TextButton(onClick = {
+
+                    // Второй ряд - Сохранение (если есть результат)
+                    if (count != null) {
+                        Button(
+                            onClick = { saveToGallery() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Сохранить результат",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    // Третий ряд - Выбор изображения
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { openGallery() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Сменить фото",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1
+                            )
+                        }
+                        TextButton(
+                            onClick = {
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }) {
-                        Text("Быстрый выбор", style = MaterialTheme.typography.bodySmall)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Быстрый выбор",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
@@ -719,5 +756,6 @@ private fun GalleryScreen(
         }
     }
 }
+
 
 
