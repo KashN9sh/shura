@@ -81,6 +81,16 @@ class MainActivity : ComponentActivity() {
 fun RbcCounterApp() {
     val navController = rememberNavController()
     val processedImages = remember { mutableStateListOf<ProcessedImage>() }
+    val context = LocalContext.current
+    val storageManager = remember { StorageManager(context) }
+    val scope = rememberCoroutineScope()
+
+    // Загружаем сохраненные изображения при запуске
+    LaunchedEffect(Unit) {
+        val savedImages = storageManager.loadProcessedImages()
+        processedImages.clear()
+        processedImages.addAll(savedImages)
+    }
 
     NavHost(
         navController = navController,
@@ -89,19 +99,22 @@ fun RbcCounterApp() {
         composable("main") {
             RbcCounterScreen(
                 navController = navController,
-                processedImages = processedImages
+                processedImages = processedImages,
+                storageManager = storageManager
             )
         }
         composable("gallery") {
             GalleryScreen(
                 navController = navController,
-                processedImages = processedImages
+                processedImages = processedImages,
+                storageManager = storageManager
             )
         }
         composable("batch") {
             BatchProcessingScreen(
                 navController = navController,
-                processedImages = processedImages
+                processedImages = processedImages,
+                storageManager = storageManager
             )
         }
         composable("edit/{imageId}") { backStackEntry ->
@@ -111,7 +124,8 @@ fun RbcCounterApp() {
                 EditImageScreen(
                     navController = navController,
                     processedImage = processedImage,
-                    processedImages = processedImages
+                    processedImages = processedImages,
+                    storageManager = storageManager
                 )
             }
         }
@@ -122,7 +136,8 @@ fun RbcCounterApp() {
 @OptIn(ExperimentalMaterial3Api::class)
 private fun RbcCounterScreen(
     navController: NavController,
-    processedImages: MutableList<ProcessedImage>
+    processedImages: MutableList<ProcessedImage>,
+    storageManager: StorageManager
 ) {
     val context = LocalContext.current
     var imageUri by remember { mutableStateOf<Uri?>(null) }
@@ -239,6 +254,11 @@ private fun RbcCounterScreen(
                 colorParams = colorParams
             )
             processedImages.add(0, processedImage) // Добавляем в начало списка
+
+            // Сохраняем в постоянную память
+            scope.launch {
+                storageManager.saveProcessedImage(processedImage, processedImages.toList())
+            }
         }
     }
 
@@ -673,9 +693,11 @@ private fun scaleToMax(src: AndroidBitmap, maxSide: Int): AndroidBitmap {
 @OptIn(ExperimentalMaterial3Api::class)
 private fun GalleryScreen(
     navController: NavController,
-    processedImages: MutableList<ProcessedImage>
+    processedImages: MutableList<ProcessedImage>,
+    storageManager: StorageManager
 ) {
     val dateFormatter = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -746,6 +768,10 @@ private fun GalleryScreen(
                                 dateFormatter = dateFormatter,
                                 onDelete = {
                                     processedImages.remove(processedImage)
+                                    // Удаляем из постоянной памяти
+                                    scope.launch {
+                                        storageManager.deleteProcessedImage(processedImage.id, processedImages.toList())
+                                    }
                                 },
                                 onEdit = {
                                     navController.navigate("edit/${processedImage.id}")

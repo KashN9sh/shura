@@ -36,7 +36,8 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 fun BatchProcessingScreen(
     navController: NavController,
-    processedImages: MutableList<ProcessedImage>
+    processedImages: MutableList<ProcessedImage>,
+    storageManager: StorageManager
 ) {
     val context = LocalContext.current
     var selectedImages by remember { mutableStateOf<List<Pair<Uri, AndroidBitmap>>>(emptyList()) }
@@ -158,8 +159,13 @@ fun BatchProcessingScreen(
                     }
                 }
 
-                // Добавляем все результаты в галерею
+                                // Добавляем все результаты в галерею
                 processedImages.addAll(0, results)
+
+                // Сохраняем все в постоянную память
+                for (result in results) {
+                    storageManager.saveProcessedImage(result, processedImages.toList())
+                }
 
                 // Возвращаемся в галерею
                 navController.navigate("gallery") {

@@ -26,7 +26,8 @@ import kotlinx.coroutines.withContext
 fun EditImageScreen(
     navController: NavController,
     processedImage: ProcessedImage,
-    processedImages: MutableList<ProcessedImage>
+    processedImages: MutableList<ProcessedImage>,
+    storageManager: StorageManager
 ) {
     var isProcessing by remember { mutableStateOf(false) }
     var currentAnnotatedBitmap by remember { mutableStateOf(processedImage.annotatedBitmap) }
@@ -70,7 +71,7 @@ fun EditImageScreen(
         }
     }
 
-    // Функция сохранения изменений
+        // Функция сохранения изменений
     fun saveChanges() {
         val updatedProcessedImage = processedImage.copy(
             annotatedBitmap = currentAnnotatedBitmap,
@@ -81,6 +82,11 @@ fun EditImageScreen(
         val index = processedImages.indexOfFirst { it.id == processedImage.id }
         if (index != -1) {
             processedImages[index] = updatedProcessedImage
+
+            // Сохраняем в постоянную память
+            scope.launch {
+                storageManager.updateProcessedImage(updatedProcessedImage, processedImages.toList())
+            }
         }
 
         navController.popBackStack()
