@@ -18,7 +18,9 @@ object ImageProcessing {
         val saturationMin: Float = 0.2f,  // Минимальная насыщенность (0-1)
         val valueMin: Float = 0.12f,      // Минимальная яркость (0-1)
         val includeRed: Boolean = true,   // Включать ли красный диапазон (0-30)
-        val forceUniformMode: Boolean = false  // Принудительно использовать режим однородных клеток
+        val forceUniformMode: Boolean = false,  // Принудительно использовать режим однородных клеток
+        val roiVThreshold: Float = 0.6f,  // Порог яркости для ROI (0-1)
+        val roiMarginFraction: Float = 0.04f  // Отступ ROI от края (0-1)
     )
 
     /**
@@ -117,6 +119,80 @@ object ImageProcessing {
         }
 
         result.setPixels(pixels, 0, width, 0, 0, width, height)
+        return result
+    }
+
+    /**
+     * Создает изображение с визуализацией ROI (области интереса)
+     */
+    fun visualizeRoi(bitmap: Bitmap, params: ColorParams): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+
+        // Создаем ROI маску
+        val roi = createCircularRoi(bitmap, params.roiVThreshold, params.roiMarginFraction)
+
+        // Рисуем ROI как полупрозрачный круг
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb(100, 0, 255, 0) // Полупрозрачный зеленый
+        }
+
+        // Находим центр и радиус ROI
+        var centerX = 0.0
+        var centerY = 0.0
+        var radius = 0.0
+        var count = 0
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val idx = y * width + x
+                if (roi[idx]) {
+                    centerX += x
+                    centerY += y
+                    count++
+                }
+            }
+        }
+
+        if (count > 0) {
+            centerX /= count
+            centerY /= count
+
+            // Находим максимальное расстояние от центра до края ROI
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    val idx = y * width + x
+                    if (roi[idx]) {
+                        val dx = x - centerX
+                        val dy = y - centerY
+                        val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+                        if (distance > radius) {
+                            radius = distance
+                        }
+                    }
+                }
+            }
+        } else {
+            // Fallback к центру изображения
+            centerX = width / 2.0
+            centerY = height / 2.0
+            radius = min(width, height) / 2.0
+        }
+
+        // Рисуем круг ROI
+        canvas.drawCircle(centerX.toFloat(), centerY.toFloat(), radius.toFloat(), paint)
+
+        // Рисуем границу ROI
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.GREEN
+            strokeWidth = 4f
+        }
+        canvas.drawCircle(centerX.toFloat(), centerY.toFloat(), radius.toFloat(), borderPaint)
+
         return result
     }
 
@@ -687,7 +763,7 @@ object ImageProcessing {
         val opened = open3x3(refined, width, height, iterations = 1)
 
         // 3) ROI - круговая область интереса
-        val roi = createCircularRoi(bitmap, vThreshold = 0.5f, marginFraction = 0.05f)
+        val roi = createCircularRoi(bitmap, vThreshold = params.roiVThreshold, marginFraction = params.roiMarginFraction)
 
         // 4) Параметры фильтрации для однородных эритроцитов
         val totalPx = width * height

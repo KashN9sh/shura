@@ -144,8 +144,10 @@ private fun RbcCounterScreen(
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
     var count by remember { mutableStateOf<Int?>(null) }
     var annotated by remember { mutableStateOf<Bitmap?>(null) }
+    var roiPreview by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
     var showColorSettings by remember { mutableStateOf(false) }
+    var showRoiPreview by remember { mutableStateOf(false) }
 
     // Цветовые параметры с ползунками
     var hueMin by remember { mutableStateOf(250f) }
@@ -155,14 +157,20 @@ private fun RbcCounterScreen(
         var includeRed by remember { mutableStateOf(true) }
     var forceUniformMode by remember { mutableStateOf(true) }
 
-    val colorParams = remember(hueMin, hueMax, saturationMin, valueMin, includeRed) {
+    // ROI параметры
+    var roiVThreshold by remember { mutableStateOf(0.6f) }
+    var roiMarginFraction by remember { mutableStateOf(0.04f) }
+
+    val colorParams = remember(hueMin, hueMax, saturationMin, valueMin, includeRed, roiVThreshold, roiMarginFraction) {
         ImageProcessing.ColorParams(
             hueMin = hueMin,
             hueMax = hueMax,
             saturationMin = saturationMin,
             valueMin = valueMin,
             includeRed = includeRed,
-            forceUniformMode = forceUniformMode
+            forceUniformMode = forceUniformMode,
+            roiVThreshold = roiVThreshold,
+            roiMarginFraction = roiMarginFraction
         )
     }
 
@@ -236,6 +244,12 @@ private fun RbcCounterScreen(
                     }
                     annotated = img
                     count = n
+
+                    // Создаем ROI превью
+                    val roiImg = withContext(Dispatchers.Default) {
+                        ImageProcessing.visualizeRoi(bitmap!!, colorParams)
+                    }
+                    roiPreview = roiImg
                 } finally {
                     isProcessing = false
                 }
@@ -393,6 +407,11 @@ private fun RbcCounterScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     when {
+                        showRoiPreview && roiPreview != null -> Image(
+                            bitmap = roiPreview!!.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         annotated != null -> Image(
                             bitmap = annotated!!.asImageBitmap(),
                             contentDescription = null,
@@ -534,7 +553,7 @@ private fun RbcCounterScreen(
 
                         // Отладочная информация
                         Text(
-                            text = "Текущие параметры: H${hueMin.toInt()}-${hueMax.toInt()}°, S${(saturationMin*100).toInt()}%, V${(valueMin*100).toInt()}%",
+                            text = "Текущие параметры: H${hueMin.toInt()}-${hueMax.toInt()}°, S${(saturationMin*100).toInt()}%, V${(valueMin*100).toInt()}%, ROI: ${(roiVThreshold*100).toInt()}%/${(roiMarginFraction*100).toInt()}%",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -638,7 +657,56 @@ private fun RbcCounterScreen(
                                  color = MaterialTheme.colorScheme.outline)
                         }
 
+                        // ROI параметры
+                        Text(
+                            text = "Настройки области интереса (ROI)",
+                            style = MaterialTheme.typography.titleMedium
+                        )
 
+                        // Переключатель показа ROI
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Показать ROI на превью", style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = showRoiPreview,
+                                onCheckedChange = { showRoiPreview = it }
+                            )
+                        }
+
+                        // Порог яркости для ROI
+                        Column {
+                            Text("Порог яркости ROI", style = MaterialTheme.typography.bodyMedium)
+                            Text("${(roiVThreshold * 100).toInt()}% (яркость фона для определения центра)",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = MaterialTheme.colorScheme.outline)
+                            Slider(
+                                value = roiVThreshold,
+                                onValueChange = { roiVThreshold = it },
+                                onValueChangeFinished = {
+                                    recalculateWithParams()
+                                },
+                                valueRange = 0.1f..1f
+                            )
+                        }
+
+                        // Отступ ROI
+                        Column {
+                            Text("Отступ ROI", style = MaterialTheme.typography.bodyMedium)
+                            Text("${(roiMarginFraction * 100).toInt()}% (отступ от края области)",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = MaterialTheme.colorScheme.outline)
+                            Slider(
+                                value = roiMarginFraction,
+                                onValueChange = { roiMarginFraction = it },
+                                onValueChangeFinished = {
+                                    recalculateWithParams()
+                                },
+                                valueRange = 0.01f..0.2f
+                            )
+                        }
 
                         // Кнопки управления
                         Row(
