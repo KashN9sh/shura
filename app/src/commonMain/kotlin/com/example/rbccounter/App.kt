@@ -463,13 +463,15 @@ private fun BatchPlaceholderScreen(
     val scope = rememberCoroutineScope()
     var batchProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var batchResults by remember { mutableStateOf<List<ProcessedImage>>(emptyList()) }
+    var refreshKeys by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     val isProcessing = batchProgress != null
+    val defaultParams = ImageProcessing.ColorParams(forceUniformMode = true)
 
     fun runBatch(images: List<PlatformImage>) {
         if (images.isEmpty()) return
         scope.launch {
             batchResults = emptyList()
-            val params = ImageProcessing.ColorParams(forceUniformMode = true)
+            val params = defaultParams
             for (i in images.indices) {
                 batchProgress = (i + 1) to images.size
                 val scaled = withContext(Dispatchers.Default) { scaleToMax(images[i], 1280) }
@@ -488,6 +490,23 @@ private fun BatchPlaceholderScreen(
                 storageManager.saveProcessedImage(item, scaled, annotated, processedImages.toList())
             }
             batchProgress = null
+        }
+    }
+
+    fun recalculateItem(itemId: String, params: ImageProcessing.ColorParams) {
+        scope.launch {
+            val original = storageManager.loadOriginalImage(itemId) ?: return@launch
+            val (annotated, n) = withContext(Dispatchers.Default) {
+                ImageProcessing.annotateRedBloodCellsWithParams(original, params)
+            }
+            val item = batchResults.find { it.id == itemId } ?: return@launch
+            val updated = item.copy(cellCount = n, colorParams = params)
+            val batchIdx = batchResults.indexOfFirst { it.id == itemId }
+            if (batchIdx >= 0) batchResults = batchResults.toMutableList().apply { set(batchIdx, updated) }
+            val listIdx = processedImages.indexOfFirst { it.id == itemId }
+            if (listIdx >= 0) processedImages[listIdx] = updated
+            storageManager.updateProcessedImage(updated, annotated, processedImages)
+            refreshKeys = refreshKeys + (itemId to (refreshKeys.getOrDefault(itemId, 0) + 1))
         }
     }
 
@@ -522,92 +541,114 @@ private fun BatchPlaceholderScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Выберите несколько изображений — они будут обработаны по очереди и добавлены в галерею.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Или перетащите файлы (JPG, PNG) в окно приложения.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    Text("Выберите несколько изображений или перетащите файлы в окно.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     imagePickerHost?.let { host ->
-                        Button(
-                            onClick = {
-                                host.pickMultipleImages { images ->
-                                    runBatch(images)
-                                }
-                            }
-                        ) { Text("Выбрать изображения") }
+                        Button(onClick = { host.pickMultipleImages { runBatch(it) } }) { Text("Выбрать изображения") }
                     }
                 }
             }
-
             batchProgress?.let { (current, total) ->
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Обработка $current из $total", style = MaterialTheme.typography.titleSmall)
-                    LinearProgressIndicator(
-                        progress = { current.toFloat() / total.coerceAtLeast(1) },
-                        modifier = Modifier.fillMaxWidth().height(8.dp)
-                    )
+                    LinearProgressIndicator(progress = { current.toFloat() / total.coerceAtLeast(1) }, modifier = Modifier.fillMaxWidth().height(8.dp))
                 }
             }
-
             if (batchResults.isNotEmpty()) {
                 Text(
-                    if (isProcessing) "Обработано в этой сессии: ${batchResults.size}"
-                    else "Готово. Обработано изображений: ${batchResults.size}",
+                    if (isProcessing) "Обработано: ${batchResults.size}" else "Готово. Настройте параметры по каждому файлу — превью и счёт пересчитаются автоматически.",
                     style = MaterialTheme.typography.titleSmall
                 )
                 LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(batchResults.size) { idx ->
                         val item = batchResults[idx]
-                        var thumb by remember(item.id) { mutableStateOf<PlatformImage?>(null) }
-                        LaunchedEffect(item.id) {
-                            thumb = storageManager.loadAnnotatedImage(item.id)
-                        }
-                        OutlinedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Row(
-                                Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(72.dp, 56.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (thumb != null) {
-                                        PlatformImageContent(
-                                            image = thumb,
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                }
-                                Column(Modifier.weight(1f)) {
-                                    Text("Эритроцитов: ${item.cellCount}", style = MaterialTheme.typography.bodyMedium)
-                                    Text("ID: ${item.id.take(8)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                }
-                            }
-                        }
+                        BatchItemCard(
+                            item = item,
+                            refreshKey = refreshKeys[item.id] ?: 0,
+                            storageManager = storageManager,
+                            recalculateItem = ::recalculateItem
+                        )
                     }
                 }
-
                 if (!isProcessing) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onBack) { Text("Назад") }
-                        Button(
-                            onClick = {
-                                imagePickerHost?.pickMultipleImages { images -> runBatch(images) }
-                            }
-                        ) { Text("Обработать ещё") }
-                        if (batchResults.isNotEmpty()) {
-                            Button(onClick = onNavigateToGallery) { Text("В галерею") }
-                        }
+                        Button(onClick = { imagePickerHost?.pickMultipleImages { runBatch(it) } }) { Text("Обработать ещё") }
+                        Button(onClick = onNavigateToGallery) { Text("В галерею") }
                     }
                 }
             } else if (!isProcessing) {
                 OutlinedButton(onClick = onBack) { Text("Назад") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BatchItemCard(
+    item: ProcessedImage,
+    refreshKey: Int,
+    storageManager: StorageManager,
+    recalculateItem: (String, ImageProcessing.ColorParams) -> Unit
+) {
+    var thumb by remember(item.id, refreshKey) { mutableStateOf<PlatformImage?>(null) }
+    LaunchedEffect(item.id, refreshKey) { thumb = storageManager.loadAnnotatedImage(item.id) }
+    var hueMin by remember(item.id) { mutableStateOf(item.colorParams.hueMin) }
+    var hueMax by remember(item.id) { mutableStateOf(item.colorParams.hueMax) }
+    var saturationMin by remember(item.id) { mutableStateOf(item.colorParams.saturationMin) }
+    var valueMin by remember(item.id) { mutableStateOf(item.colorParams.valueMin) }
+    var includeRed by remember(item.id) { mutableStateOf(item.colorParams.includeRed) }
+    var roiVThreshold by remember(item.id) { mutableStateOf(item.colorParams.roiVThreshold) }
+    var roiMarginFraction by remember(item.id) { mutableStateOf(item.colorParams.roiMarginFraction) }
+    val currentParams = remember(hueMin, hueMax, saturationMin, valueMin, includeRed, roiVThreshold, roiMarginFraction) {
+        item.colorParams.copy(hueMin = hueMin, hueMax = hueMax, saturationMin = saturationMin, valueMin = valueMin, includeRed = includeRed, roiVThreshold = roiVThreshold, roiMarginFraction = roiMarginFraction)
+    }
+    LaunchedEffect(currentParams, item.id) {
+        if (currentParams == item.colorParams) return@LaunchedEffect
+        delay(400)
+        recalculateItem(item.id, currentParams)
+    }
+    OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+        Row(
+            Modifier.padding(12.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(320.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (thumb != null) {
+                        PlatformImageContent(
+                            image = thumb!!,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+                Text("Эритроцитов: ${item.cellCount}", style = MaterialTheme.typography.titleMedium)
+                Text("ID: ${item.id.take(8)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                ColorRangeIndicator(hueMin, hueMax, saturationMin, valueMin, includeRed, Modifier.fillMaxWidth())
+            }
+            Column(
+                Modifier.width(300.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Параметры (пересчёт через 0.4 с)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                SliderWithLabel("Hue мин", hueMin, 0f..360f, "${hueMin.toInt()}°") { hueMin = it }
+                SliderWithLabel("Hue макс", hueMax, 0f..360f, "${hueMax.toInt()}°") { hueMax = it }
+                SliderWithLabel("Насыщ. мин", saturationMin, 0f..1f, "%.2f".format(saturationMin)) { saturationMin = it }
+                SliderWithLabel("Яркость мин", valueMin, 0f..1f, "%.2f".format(valueMin)) { valueMin = it }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Красный (0–30°)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Switch(checked = includeRed, onCheckedChange = { includeRed = it })
+                }
+                SliderWithLabel("Порог яркости ROI", roiVThreshold, 0.1f..1f, "${(roiVThreshold * 100).toInt()}%") { roiVThreshold = it }
+                SliderWithLabel("Отступ ROI", roiMarginFraction, 0.01f..0.2f, "${(roiMarginFraction * 100).toInt()}%") { roiMarginFraction = it }
             }
         }
     }
