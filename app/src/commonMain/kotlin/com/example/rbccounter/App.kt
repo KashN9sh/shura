@@ -4,15 +4,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -40,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -59,9 +64,27 @@ import kotlinx.coroutines.withContext
 private const val COUNT_PREFIX = "Эритроцитов: "
 
 @Composable
+private fun SliderWithLabel(
+    label: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    valueText: String,
+    onValueChange: (Float) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.bodySmall)
+            Text(valueText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+        }
+        Slider(value = value, onValueChange = onValueChange, valueRange = valueRange, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
 fun RbcCounterApp(
     storageManager: StorageManager,
-    imagePickerHost: ImagePickerHost? = null
+    imagePickerHost: ImagePickerHost? = null,
+    setDropCallback: (((List<PlatformImage>) -> Unit)?) -> Unit = {}
 ) {
     RbcTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -85,9 +108,11 @@ fun RbcCounterApp(
                 )
                 "batch" -> BatchPlaceholderScreen(
                     onBack = { currentScreen = backStack.last(); backStack = backStack.dropLast(1) },
+                    onNavigateToGallery = { currentScreen = "gallery"; backStack = backStack + "batch" },
                     imagePickerHost = imagePickerHost,
                     storageManager = storageManager,
-                    processedImages = processedImages
+                    processedImages = processedImages,
+                    setDropCallback = setDropCallback
                 )
                 "gallery" -> GalleryScreen(
                     processedImages = processedImages,
@@ -212,63 +237,70 @@ private fun RbcCounterScreen(
         }
     }
 
-    Scaffold(topBar = {}) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    val settingsContent: @Composable () -> Unit = {
+        OutlinedCard(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            border = CardDefaults.outlinedCardBorder()
         ) {
-            Text("Улучшенный RBC Counter", style = MaterialTheme.typography.titleLarge)
-            OutlinedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 220.dp, max = 480.dp)
-                    .clickable(enabled = imagePickerHost != null) {
-                        imagePickerHost?.pickSingleImage { picked ->
-                            picked?.let {
-                                imageSourceId = "picked"
-                                image = it
-                                count = null
-                                annotated = null
-                                processImage(it)
-                            }
-                        }
-                    },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = CardDefaults.outlinedCardBorder()
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 220.dp)
-                        .background(MaterialTheme.colorScheme.surface),
-                    contentAlignment = Alignment.Center
-                ) {
-                    when {
-                        showRoiPreview && roiPreview != null -> PlatformImageContent(
-                            image = roiPreview,
-                            contentDescription = "ROI превью",
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        annotated != null -> PlatformImageContent(
-                            image = annotated,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        else -> Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.Image, contentDescription = null)
-                            Text("Выберите фото", style = MaterialTheme.typography.bodyMedium)
-                            if (imagePickerHost != null) {
-                                OutlinedButton(onClick = {
-                                    imagePickerHost.pickSingleImage { picked ->
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Цветовой диапазон", style = MaterialTheme.typography.titleSmall)
+                ColorRangeIndicator(hueMin, hueMax, saturationMin, valueMin, includeRed, Modifier.fillMaxWidth())
+                SliderWithLabel("Hue мин", hueMin, 0f..360f, "${hueMin.toInt()}°") { hueMin = it }
+                SliderWithLabel("Hue макс", hueMax, 0f..360f, "${hueMax.toInt()}°") { hueMax = it }
+                SliderWithLabel("Насыщ. мин", saturationMin, 0f..1f, "%.2f".format(saturationMin)) { saturationMin = it }
+                SliderWithLabel("Яркость мин", valueMin, 0f..1f, "%.2f".format(valueMin)) { valueMin = it }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Красный (0–30°)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Switch(checked = includeRed, onCheckedChange = { includeRed = it })
+                }
+            }
+        }
+        OutlinedCard(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            border = CardDefaults.outlinedCardBorder()
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Область интереса (ROI)", style = MaterialTheme.typography.titleSmall)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Показать ROI", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Switch(checked = showRoiPreview, onCheckedChange = { showRoiPreview = it })
+                }
+                SliderWithLabel("Порог яркости ROI", roiVThreshold, 0.1f..1f, "${(roiVThreshold * 100).toInt()}%") { roiVThreshold = it }
+                SliderWithLabel("Отступ ROI", roiMarginFraction, 0.01f..0.2f, "${(roiMarginFraction * 100).toInt()}%") { roiMarginFraction = it }
+                if (image != null && !isProcessing) {
+                    OutlinedButton(onClick = { showDebugMask() }, modifier = Modifier.fillMaxWidth()) { Text("Отладка маски") }
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("RBC Counter") },
+                actions = {
+                    OutlinedButton(onClick = onNavigateToBatch) { Text("Массовая") }
+                    Spacer(Modifier.size(8.dp))
+                    OutlinedButton(onClick = onNavigateToGallery) { Text("Галерея") }
+                }
+            )
+        }
+    ) { padding ->
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            val wideLayout = maxWidth > 880.dp
+            if (wideLayout) {
+                Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clickable(enabled = imagePickerHost != null) {
+                                    imagePickerHost?.pickSingleImage { picked ->
                                         picked?.let {
                                             imageSourceId = "picked"
                                             image = it
@@ -277,76 +309,141 @@ private fun RbcCounterScreen(
                                             processImage(it)
                                         }
                                     }
-                                }) { Text("Выбрать фото") }
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = CardDefaults.outlinedCardBorder()
+                        ) {
+                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+                                when {
+                                    showRoiPreview && roiPreview != null -> PlatformImageContent(image = roiPreview!!, contentDescription = "ROI превью", modifier = Modifier.fillMaxWidth())
+                                    annotated != null -> PlatformImageContent(image = annotated!!, contentDescription = null, modifier = Modifier.fillMaxWidth())
+                                    else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Default.Image, contentDescription = null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
+                                        Text("Выберите фото", style = MaterialTheme.typography.bodyMedium)
+                                        if (imagePickerHost != null) {
+                                            OutlinedButton(onClick = {
+                                                imagePickerHost.pickSingleImage { picked ->
+                                                    picked?.let {
+                                                        imageSourceId = "picked"
+                                                        image = it
+                                                        count = null
+                                                        annotated = null
+                                                        processImage(it)
+                                                    }
+                                                }
+                                            }) { Text("Выбрать фото") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = when {
+                                    isProcessing -> "Обработка..."
+                                    count != null -> COUNT_PREFIX + count
+                                    image != null -> "Не удалось обработать"
+                                    else -> "Готов к работе"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            if (count != null) {
+                                Button(onClick = { saveToGallery() }) { Text("Сохранить результат") }
                             }
                         }
                     }
+                    Column(
+                        Modifier
+                            .width(320.dp)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        settingsContent()
+                    }
                 }
-            }
-            Text("Настройка цветового диапазона", style = MaterialTheme.typography.titleSmall)
-            ColorRangeIndicator(hueMin, hueMax, saturationMin, valueMin, includeRed, Modifier.fillMaxWidth())
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Hue мин: ${hueMin.toInt()}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 8.dp))
-                Slider(value = hueMin, onValueChange = { hueMin = it }, valueRange = 0f..360f, modifier = Modifier.weight(1f))
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Hue макс: ${hueMax.toInt()}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 8.dp))
-                Slider(value = hueMax, onValueChange = { hueMax = it }, valueRange = 0f..360f, modifier = Modifier.weight(1f))
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Насыщ. мин: ${"%.2f".format(saturationMin)}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 8.dp))
-                Slider(value = saturationMin, onValueChange = { saturationMin = it }, valueRange = 0f..1f, modifier = Modifier.weight(1f))
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Яркость мин: ${"%.2f".format(valueMin)}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 8.dp))
-                Slider(value = valueMin, onValueChange = { valueMin = it }, valueRange = 0f..1f, modifier = Modifier.weight(1f))
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Включить красный (0–30°)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                Switch(checked = includeRed, onCheckedChange = { includeRed = it })
-            }
-            Text("Область интереса (ROI)", style = MaterialTheme.typography.titleSmall)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Показать ROI на превью", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                Switch(checked = showRoiPreview, onCheckedChange = { showRoiPreview = it })
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Порог яркости ROI: ${(roiVThreshold * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 8.dp))
-                Slider(value = roiVThreshold, onValueChange = { roiVThreshold = it }, valueRange = 0.1f..1f, modifier = Modifier.weight(1f))
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Отступ ROI: ${(roiMarginFraction * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 8.dp))
-                Slider(value = roiMarginFraction, onValueChange = { roiMarginFraction = it }, valueRange = 0.01f..0.2f, modifier = Modifier.weight(1f))
-            }
-            if (image != null && !isProcessing) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { showDebugMask() }, modifier = Modifier.weight(1f)) { Text("Отладка маски") }
-                }
-            }
-            if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = when {
-                        isProcessing -> "Обработка..."
-                        count != null -> COUNT_PREFIX + count
-                        image != null -> "Не удалось обработать"
-                        else -> "Готов к работе"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onNavigateToBatch) { Text("Массовая") }
-                    OutlinedButton(onClick = onNavigateToGallery) { Text("Галерея") }
-                }
-            }
-            if (count != null) {
-                Button(onClick = { saveToGallery() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Сохранить результат")
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    OutlinedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 220.dp, max = 480.dp)
+                            .clickable(enabled = imagePickerHost != null) {
+                                imagePickerHost?.pickSingleImage { picked ->
+                                    picked?.let {
+                                        imageSourceId = "picked"
+                                        image = it
+                                        count = null
+                                        annotated = null
+                                        processImage(it)
+                                    }
+                                }
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = CardDefaults.outlinedCardBorder()
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 220.dp)
+                                .background(MaterialTheme.colorScheme.surface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when {
+                                showRoiPreview && roiPreview != null -> PlatformImageContent(image = roiPreview!!, contentDescription = "ROI превью", modifier = Modifier.fillMaxWidth())
+                                annotated != null -> PlatformImageContent(image = annotated!!, contentDescription = null, modifier = Modifier.fillMaxWidth())
+                                else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Default.Image, contentDescription = null)
+                                    Text("Выберите фото", style = MaterialTheme.typography.bodyMedium)
+                                    if (imagePickerHost != null) {
+                                        OutlinedButton(onClick = {
+                                            imagePickerHost.pickSingleImage { picked ->
+                                                picked?.let {
+                                                    imageSourceId = "picked"
+                                                    image = it
+                                                    count = null
+                                                    annotated = null
+                                                    processImage(it)
+                                                }
+                                            }
+                                        }) { Text("Выбрать фото") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    settingsContent()
+                    if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = when {
+                                isProcessing -> "Обработка..."
+                                count != null -> COUNT_PREFIX + count
+                                image != null -> "Не удалось обработать"
+                                else -> "Готов к работе"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        if (count != null) {
+                            Button(onClick = { saveToGallery() }) { Text("Сохранить результат") }
+                        }
+                    }
                 }
             }
         }
@@ -357,50 +454,161 @@ private fun RbcCounterScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun BatchPlaceholderScreen(
     onBack: () -> Unit,
+    onNavigateToGallery: () -> Unit,
     imagePickerHost: ImagePickerHost?,
     storageManager: StorageManager,
-    processedImages: MutableList<ProcessedImage>
+    processedImages: MutableList<ProcessedImage>,
+    setDropCallback: (((List<PlatformImage>) -> Unit)?) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
+    var batchProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var batchResults by remember { mutableStateOf<List<ProcessedImage>>(emptyList()) }
+    val isProcessing = batchProgress != null
+
+    fun runBatch(images: List<PlatformImage>) {
+        if (images.isEmpty()) return
+        scope.launch {
+            batchResults = emptyList()
+            val params = ImageProcessing.ColorParams(forceUniformMode = true)
+            for (i in images.indices) {
+                batchProgress = (i + 1) to images.size
+                val scaled = withContext(Dispatchers.Default) { scaleToMax(images[i], 1280) }
+                val (annotated, n) = withContext(Dispatchers.Default) {
+                    ImageProcessing.annotateRedBloodCellsWithParams(scaled, params)
+                }
+                val item = ProcessedImage(
+                    id = randomId(),
+                    imageSourceId = "batch",
+                    cellCount = n,
+                    timestamp = System.currentTimeMillis(),
+                    colorParams = params
+                )
+                batchResults = batchResults + item
+                processedImages.add(item)
+                storageManager.saveProcessedImage(item, scaled, annotated, processedImages.toList())
+            }
+            batchProgress = null
+        }
+    }
+
+    DisposableEffect(Unit) {
+        setDropCallback { runBatch(it) }
+        onDispose { setDropCallback(null) }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Массовая обработка") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") } }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") } },
+                actions = {
+                    if (batchResults.isNotEmpty() && !isProcessing) {
+                        TextButton(onClick = onNavigateToGallery) { Text("В галерею") }
+                    }
+                }
             )
         }
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Выберите несколько изображений", style = MaterialTheme.typography.bodyLarge)
-            imagePickerHost?.let { host ->
-                Button(onClick = {
-                    host.pickMultipleImages { images ->
-                        scope.launch {
-                            images.forEach { img ->
-                                val scaled = withContext(Dispatchers.Default) { scaleToMax(img, 1280) }
-                                val params = ImageProcessing.ColorParams(forceUniformMode = true)
-                                val (annotated, n) = withContext(Dispatchers.Default) {
-                                    ImageProcessing.annotateRedBloodCellsWithParams(scaled, params)
+            if (!isProcessing && batchResults.isEmpty()) {
+                Column(
+                    Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Выберите несколько изображений — они будут обработаны по очереди и добавлены в галерею.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Или перетащите файлы (JPG, PNG) в окно приложения.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    imagePickerHost?.let { host ->
+                        Button(
+                            onClick = {
+                                host.pickMultipleImages { images ->
+                                    runBatch(images)
                                 }
-                                val item = ProcessedImage(
-                                    id = randomId(),
-                                    imageSourceId = "batch",
-                                    cellCount = n,
-                                    timestamp = System.currentTimeMillis(),
-                                    colorParams = params
-                                )
-                                processedImages.add(item)
-                                storageManager.saveProcessedImage(item, scaled, annotated, processedImages.toList())
+                            }
+                        ) { Text("Выбрать изображения") }
+                    }
+                }
+            }
+
+            batchProgress?.let { (current, total) ->
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Обработка $current из $total", style = MaterialTheme.typography.titleSmall)
+                    LinearProgressIndicator(
+                        progress = { current.toFloat() / total.coerceAtLeast(1) },
+                        modifier = Modifier.fillMaxWidth().height(8.dp)
+                    )
+                }
+            }
+
+            if (batchResults.isNotEmpty()) {
+                Text(
+                    if (isProcessing) "Обработано в этой сессии: ${batchResults.size}"
+                    else "Готово. Обработано изображений: ${batchResults.size}",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(batchResults.size) { idx ->
+                        val item = batchResults[idx]
+                        var thumb by remember(item.id) { mutableStateOf<PlatformImage?>(null) }
+                        LaunchedEffect(item.id) {
+                            thumb = storageManager.loadAnnotatedImage(item.id)
+                        }
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(72.dp, 56.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (thumb != null) {
+                                        PlatformImageContent(
+                                            image = thumb,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text("Эритроцитов: ${item.cellCount}", style = MaterialTheme.typography.bodyMedium)
+                                    Text("ID: ${item.id.take(8)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                }
                             }
                         }
                     }
-                }) { Text("Выбрать изображения") }
+                }
+
+                if (!isProcessing) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onBack) { Text("Назад") }
+                        Button(
+                            onClick = {
+                                imagePickerHost?.pickMultipleImages { images -> runBatch(images) }
+                            }
+                        ) { Text("Обработать ещё") }
+                        if (batchResults.isNotEmpty()) {
+                            Button(onClick = onNavigateToGallery) { Text("В галерею") }
+                        }
+                    }
+                }
+            } else if (!isProcessing) {
+                OutlinedButton(onClick = onBack) { Text("Назад") }
             }
-            OutlinedButton(onClick = onBack) { Text("Назад") }
         }
     }
 }
