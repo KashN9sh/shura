@@ -118,6 +118,8 @@ compose.desktop {
             packageVersion = "1.0.0"
             macOS {
                 iconFile.set(project.file("icon/icon.icns"))
+                // Совместимость с macOS 14.x (в т.ч. Intel 14.6.1)
+                minimumSystemVersion = "10.13"
             }
         }
     }
