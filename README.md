@@ -48,7 +48,35 @@ private fun maskUniformCells(bitmap: Bitmap): BooleanArray {
 3. Приложение автоматически определит тип изображения и применит оптимальный алгоритм
 4. Результат подсчета отобразится с белыми обводками вокруг найденных эритроцитов
 
+## Сборка и запуск
+
+### Требования
+- **JDK 17+** (для сборки нужна Java 11 или новее; рекомендуется 17)
+- Android: Android Studio или командная строка с `ANDROID_HOME`
+- macOS/Desktop: для десктопной версии достаточно JDK 17
+
+### Android
+```bash
+./gradlew :app:assembleDebug
+# или запуск на устройстве/эмуляторе
+./gradlew :app:installDebug
+```
+
+### Версия для macOS (и других desktop)
+Проект собран как Kotlin Multiplatform (KMP) с Compose Multiplatform. Десктопная версия собирается и запускается так:
+
+```bash
+# Запуск приложения в окне (macOS/Windows/Linux)
+./gradlew :app:run
+
+# Сборка дистрибутива для текущей ОС (например, .dmg для macOS)
+./gradlew :app:packageDistributionForCurrentOS
+```
+
+Артефакты появятся в `app/build/compose/binaries/`. Для macOS потребуется JDK 17+ в `JAVA_HOME`.
+
 ## Совместимость
 - Android 6.0+ (API 23+)
+- macOS / Windows / Linux (desktop через Compose Multiplatform)
 - Поддержка различных форматов изображений
-- Автоматическая обработка разрешений для доступа к галерее
+- Автоматическая обработка разрешений для доступа к галерее (Android)
