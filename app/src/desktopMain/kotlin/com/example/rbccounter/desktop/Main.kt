@@ -29,7 +29,7 @@ fun main() = application {
 
     Window(
         onCloseRequest = ::exitApplication,
-        title = "RBC Counter",
+        title = "BIMBO RBCcounter",
         state = rememberWindowState(width = 1000.dp, height = 720.dp)
     ) {
         DisposableEffect(dropCallback) {

@@ -43,6 +43,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -281,9 +282,14 @@ private fun RbcCounterScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("RBC Counter") },
+                title = { Text("BIMBO RBCcounter") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
                 actions = {
-                    OutlinedButton(onClick = onNavigateToBatch) { Text("Массовая") }
+                    Button(onClick = onNavigateToBatch) { Text("Массовая") }
                     Spacer(Modifier.size(8.dp))
                     OutlinedButton(onClick = onNavigateToGallery) { Text("Галерея") }
                 }
@@ -519,6 +525,12 @@ private fun BatchPlaceholderScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Массовая обработка") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") } },
                 actions = {
                     if (batchResults.isNotEmpty() && !isProcessing) {
@@ -559,7 +571,7 @@ private fun BatchPlaceholderScreen(
                         if (isProcessing) "Обработано: ${batchResults.size}" else "Готово. Настройте параметры по каждому файлу — превью и счёт пересчитаются автоматически.",
                         style = MaterialTheme.typography.titleSmall
                     )
-                    Text("Всего эритроцитов: ${batchResults.sumOf { it.cellCount }}", style = MaterialTheme.typography.titleMedium)
+                    Text("Всего эритроцитов: ${batchResults.sumOf { it.cellCount }}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -670,6 +682,11 @@ private fun GalleryScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Галерея") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
@@ -791,6 +808,12 @@ private fun EditImageScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Редактирование") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад") } },
                 actions = {
                     if (!isProcessing) {
