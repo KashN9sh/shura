@@ -1,12 +1,9 @@
 package com.example.rbccounter
 
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 object ImageProcessing {
     /**
@@ -27,8 +24,8 @@ object ImageProcessing {
      * Подсчёт фиолетовых ядер эритроцитов.
      * Этапы: HSV-маска (фиолетовый диапазон), морфологическое открытие, фильтрация по площади и вытянутости.
      */
-    fun countPurpleNuclei(bitmap: Bitmap): Int {
-        val boxes = detectPurpleNucleiBoxes(bitmap)
+    fun countPurpleNuclei(image: PlatformImage): Int {
+        val boxes = detectPurpleNucleiBoxes(image)
         return boxes.size
     }
 
@@ -36,114 +33,107 @@ object ImageProcessing {
      * Улучшенный подсчёт эритроцитов с поддержкой разных типов изображений.
      * Автоматически определяет тип изображения и применяет соответствующий алгоритм.
      */
-    fun countRedBloodCells(bitmap: Bitmap): Int {
-        val boxes = detectRedBloodCellsBoxes(bitmap)
+    fun countRedBloodCells(image: PlatformImage): Int {
+        val boxes = detectRedBloodCellsBoxes(image)
         return boxes.size
     }
 
     /**
      * Подсчёт эритроцитов с настраиваемыми цветовыми параметрами
      */
-    fun countRedBloodCellsWithParams(bitmap: Bitmap, params: ColorParams): Int {
-        val boxes = detectRedBloodCellsBoxesWithParams(bitmap, params)
+    fun countRedBloodCellsWithParams(image: PlatformImage, params: ColorParams): Int {
+        val boxes = detectRedBloodCellsBoxesWithParams(image, params)
         return boxes.size
     }
 
     /**
      * Возвращает изображение с белыми обводками вокруг найденных ядер и их количество.
      */
-    fun annotatePurpleNuclei(bitmap: Bitmap): Pair<Bitmap, Int> {
-        val boxes = detectPurpleNucleiBoxes(bitmap)
-        val annotated = drawBoxes(bitmap, boxes)
+    fun annotatePurpleNuclei(image: PlatformImage): Pair<PlatformImage, Int> {
+        val boxes = detectPurpleNucleiBoxes(image)
+        val annotated = drawBoxes(image, boxes)
         return annotated to boxes.size
     }
 
     /**
      * Улучшенная аннотация с поддержкой разных типов эритроцитов.
      */
-    fun annotateRedBloodCells(bitmap: Bitmap): Pair<Bitmap, Int> {
-        val boxes = detectRedBloodCellsBoxes(bitmap)
-        val annotated = drawBoxes(bitmap, boxes)
+    fun annotateRedBloodCells(image: PlatformImage): Pair<PlatformImage, Int> {
+        val boxes = detectRedBloodCellsBoxes(image)
+        val annotated = drawBoxes(image, boxes)
         return annotated to boxes.size
     }
 
     /**
      * Аннотация с настраиваемыми цветовыми параметрами
      */
-    fun annotateRedBloodCellsWithParams(bitmap: Bitmap, params: ColorParams): Pair<Bitmap, Int> {
-        val boxes = detectRedBloodCellsBoxesWithParams(bitmap, params)
-        val annotated = drawBoxes(bitmap, boxes)
+    fun annotateRedBloodCellsWithParams(image: PlatformImage, params: ColorParams): Pair<PlatformImage, Int> {
+        val boxes = detectRedBloodCellsBoxesWithParams(image, params)
+        val annotated = drawBoxes(image, boxes)
         return annotated to boxes.size
     }
 
     /**
      * Отладочная функция для визуализации цветовой маски
      */
-    fun debugColorMask(bitmap: Bitmap): Bitmap {
-        val width = bitmap.width
-        val height = bitmap.height
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+    fun debugColorMask(image: PlatformImage): PlatformImage {
+        val width = image.width
+        val height = image.height
+        val result = image.copy()
         val pixels = IntArray(width * height)
-        result.getPixels(pixels, 0, width, 0, 0, width, height)
+        result.getPixels(pixels)
 
-        val mask = maskUniformCells(bitmap)
+        val mask = maskUniformCells(image)
 
         for (i in pixels.indices) {
             if (mask[i]) {
                 // Подсвечиваем детектированные пиксели красным
-                pixels[i] = Color.RED
+                pixels[i] = HsvUtils.redColor()
             }
         }
 
-        result.setPixels(pixels, 0, width, 0, 0, width, height)
+        result.setPixels(pixels)
         return result
     }
 
     /**
      * Отладочная функция с настраиваемыми параметрами
      */
-    fun debugColorMaskWithParams(bitmap: Bitmap, params: ColorParams): Bitmap {
-        val width = bitmap.width
-        val height = bitmap.height
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+    fun debugColorMaskWithParams(image: PlatformImage, params: ColorParams): PlatformImage {
+        val width = image.width
+        val height = image.height
+        val result = image.copy()
         val pixels = IntArray(width * height)
-        result.getPixels(pixels, 0, width, 0, 0, width, height)
+        result.getPixels(pixels)
 
-        val mask = maskUniformCellsWithParams(bitmap, params)
+        val mask = maskUniformCellsWithParams(image, params)
 
         for (i in pixels.indices) {
             if (mask[i]) {
                 // Подсвечиваем детектированные пиксели красным
-                pixels[i] = Color.RED
+                pixels[i] = HsvUtils.redColor()
             }
         }
 
-        result.setPixels(pixels, 0, width, 0, 0, width, height)
+        result.setPixels(pixels)
         return result
     }
 
     /**
      * Создает изображение с визуализацией ROI (области интереса)
      */
-    fun visualizeRoi(bitmap: Bitmap, params: ColorParams): Bitmap {
-        val width = bitmap.width
-        val height = bitmap.height
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(result)
+    fun visualizeRoi(image: PlatformImage, params: ColorParams): PlatformImage {
+        val width = image.width
+        val height = image.height
+        val result = image.copy()
+        val pixels = IntArray(width * height)
+        result.getPixels(pixels)
 
-        // Создаем ROI маску
-        val roi = createCircularRoi(bitmap, params.roiVThreshold, params.roiMarginFraction)
-
-        // Рисуем ROI как полупрозрачный круг
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.argb(100, 0, 255, 0) // Полупрозрачный зеленый
-        }
+        val roi = createCircularRoi(image, params.roiVThreshold, params.roiMarginFraction)
 
         // Находим центр и радиус ROI
         var centerX = 0.0
         var centerY = 0.0
-        var radius = 0.0
         var count = 0
 
         for (y in 0 until height) {
@@ -157,50 +147,58 @@ object ImageProcessing {
             }
         }
 
+        val cx: Double
+        val cy: Double
+        val radius: Double
         if (count > 0) {
-            centerX /= count
-            centerY /= count
-
-            // Находим максимальное расстояние от центра до края ROI
+            cx = centerX / count
+            cy = centerY / count
+            var maxDist = 0.0
             for (y in 0 until height) {
                 for (x in 0 until width) {
                     val idx = y * width + x
                     if (roi[idx]) {
-                        val dx = x - centerX
-                        val dy = y - centerY
-                        val distance = kotlin.math.sqrt(dx * dx + dy * dy)
-                        if (distance > radius) {
-                            radius = distance
+                        val dx = x - cx
+                        val dy = y - cy
+                        val distance = sqrt(dx * dx + dy * dy)
+                        if (distance > maxDist) {
+                            maxDist = distance
                         }
                     }
                 }
             }
+            radius = maxDist
         } else {
-            // Fallback к центру изображения
-            centerX = width / 2.0
-            centerY = height / 2.0
+            cx = width / 2.0
+            cy = height / 2.0
             radius = min(width, height) / 2.0
         }
 
-        // Рисуем круг ROI
-        canvas.drawCircle(centerX.toFloat(), centerY.toFloat(), radius.toFloat(), paint)
+        val semiTransparentGreen = (100 shl 24 or 0x00FF00).toInt()
+        val green = 0xFF00FF00.toInt()
 
-        // Рисуем границу ROI
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            color = Color.GREEN
-            strokeWidth = 4f
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val dx = x - cx
+                val dy = y - cy
+                val d = sqrt(dx * dx + dy * dy)
+                val idx = y * width + x
+                when {
+                    d <= radius - 1 -> pixels[idx] = semiTransparentGreen
+                    d <= radius + 2 -> pixels[idx] = green
+                }
+            }
         }
-        canvas.drawCircle(centerX.toFloat(), centerY.toFloat(), radius.toFloat(), borderPaint)
 
+        result.setPixels(pixels)
         return result
     }
 
-    private fun toGrayscale(bitmap: Bitmap): ByteArray {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun toGrayscale(image: PlatformImage): ByteArray {
+        val width = image.width
+        val height = image.height
         val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        image.getPixels(pixels)
         val out = ByteArray(width * height)
         var i = 0
         while (i < pixels.size) {
@@ -498,18 +496,18 @@ object ImageProcessing {
         val area: Int
     )
 
-    private fun detectPurpleNucleiBoxes(bitmap: Bitmap): List<BBox> {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun detectPurpleNucleiBoxes(image: PlatformImage): List<BBox> {
+        val width = image.width
+        val height = image.height
         // 1) Маска фиолетовых пикселей
-        val mask = maskPurpleHSV(bitmap)
+        val mask = maskPurpleHSV(image)
         // 2) Закрытие, чтобы замкнуть «кольца» ядер
         var refined = close3x3(mask, width, height, iterations = 1)
         // 3) Заливка дыр (превращаем кольца в сплошные эллипсы)
         refined = fillHoles(refined, width, height)
         // 4) Лёгкое открытие для удаления мелкого мусора
         val opened = open3x3(refined, width, height, iterations = 1)
-        val roi = createCircularRoi(bitmap, vThreshold = 0.6f, marginFraction = 0.04f)
+        val roi = createCircularRoi(image, vThreshold = 0.6f, marginFraction = 0.04f)
 
         val totalPx = width * height
         val minArea = max(10, totalPx / 180_000)
@@ -574,14 +572,14 @@ object ImageProcessing {
      * Улучшенный детектор эритроцитов с поддержкой разных типов изображений.
      * Автоматически определяет тип изображения и применяет соответствующий алгоритм.
      */
-    private fun detectRedBloodCellsBoxes(bitmap: Bitmap): List<BBox> {
+    private fun detectRedBloodCellsBoxes(image: PlatformImage): List<BBox> {
         // Определяем тип изображения по анализу цветов
-        val imageType = analyzeImageType(bitmap)
+        val imageType = analyzeImageType(image)
 
         return when (imageType) {
-            ImageType.PURPLE_NUCLEI -> detectPurpleNucleiBoxes(bitmap)
-            ImageType.UNIFORM_CELLS -> detectUniformCellsBoxes(bitmap)
-            ImageType.MIXED -> detectMixedCellsBoxes(bitmap)
+            ImageType.PURPLE_NUCLEI -> detectPurpleNucleiBoxes(image)
+            ImageType.UNIFORM_CELLS -> detectUniformCellsBoxes(image)
+            ImageType.MIXED -> detectMixedCellsBoxes(image)
         }
     }
 
@@ -589,19 +587,19 @@ object ImageProcessing {
      * Улучшенный детектор эритроцитов с поддержкой разных типов изображений.
      * Автоматически определяет тип изображения и применяет соответствующий алгоритм.
      */
-    private fun detectRedBloodCellsBoxesWithParams(bitmap: Bitmap, params: ColorParams): List<BBox> {
+    private fun detectRedBloodCellsBoxesWithParams(image: PlatformImage, params: ColorParams): List<BBox> {
         // Если включен принудительный режим, используем настраиваемые параметры
         if (params.forceUniformMode) {
-            return detectUniformCellsBoxesWithParams(bitmap, params)
+            return detectUniformCellsBoxesWithParams(image, params)
         }
 
         // Определяем тип изображения по анализу цветов с учетом параметров
-        val imageType = analyzeImageTypeWithParams(bitmap, params)
+        val imageType = analyzeImageTypeWithParams(image, params)
 
         return when (imageType) {
-            ImageType.PURPLE_NUCLEI -> detectPurpleNucleiBoxes(bitmap)
-            ImageType.UNIFORM_CELLS -> detectUniformCellsBoxesWithParams(bitmap, params)
-            ImageType.MIXED -> detectMixedCellsBoxesWithParams(bitmap, params)
+            ImageType.PURPLE_NUCLEI -> detectPurpleNucleiBoxes(image)
+            ImageType.UNIFORM_CELLS -> detectUniformCellsBoxesWithParams(image, params)
+            ImageType.MIXED -> detectMixedCellsBoxesWithParams(image, params)
         }
     }
 
@@ -611,12 +609,11 @@ object ImageProcessing {
         MIXED            // Смешанный тип
     }
 
-    private fun analyzeImageType(bitmap: Bitmap): ImageType {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun analyzeImageType(image: PlatformImage): ImageType {
+        val width = image.width
+        val height = image.height
         val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val hsv = FloatArray(3)
+        image.getPixels(pixels)
 
         var purpleCount = 0
         var uniformCount = 0
@@ -631,7 +628,7 @@ object ImageProcessing {
                 val r = (c shr 16) and 0xFF
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
-                Color.RGBToHSV(r, g, b, hsv)
+                val hsv = HsvUtils.rgbToHsv(r, g, b)
 
                 val h = hsv[0]
                 val s = hsv[1]
@@ -664,12 +661,11 @@ object ImageProcessing {
     /**
      * Анализ типа изображения с настраиваемыми параметрами
      */
-    private fun analyzeImageTypeWithParams(bitmap: Bitmap, params: ColorParams): ImageType {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun analyzeImageTypeWithParams(image: PlatformImage, params: ColorParams): ImageType {
+        val width = image.width
+        val height = image.height
         val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val hsv = FloatArray(3)
+        image.getPixels(pixels)
 
         var purpleCount = 0
         var uniformCount = 0
@@ -684,7 +680,7 @@ object ImageProcessing {
                 val r = (c shr 16) and 0xFF
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
-                Color.RGBToHSV(r, g, b, hsv)
+                val hsv = HsvUtils.rgbToHsv(r, g, b)
 
                 val h = hsv[0]
                 val s = hsv[1]
@@ -722,12 +718,12 @@ object ImageProcessing {
     /**
      * Детектор для однородных эритроцитов (как на ваших фото)
      */
-    private fun detectUniformCellsBoxes(bitmap: Bitmap): List<BBox> {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun detectUniformCellsBoxes(image: PlatformImage): List<BBox> {
+        val width = image.width
+        val height = image.height
 
         // 1) Маска пурпурных/малиновых эритроцитов
-        val mask = maskUniformCells(bitmap)
+        val mask = maskUniformCells(image)
 
         // 2) Морфологические операции для очистки
         var refined = close3x3(mask, width, height, iterations = 2)
@@ -735,7 +731,7 @@ object ImageProcessing {
         val opened = open3x3(refined, width, height, iterations = 1)
 
         // 3) ROI - круговая область интереса
-        val roi = createCircularRoi(bitmap, vThreshold = 0.5f, marginFraction = 0.05f)
+        val roi = createCircularRoi(image, vThreshold = 0.5f, marginFraction = 0.05f)
 
         // 4) Параметры фильтрации для однородных эритроцитов
         val totalPx = width * height
@@ -750,12 +746,12 @@ object ImageProcessing {
     /**
      * Детектор для однородных эритроцитов с настраиваемыми цветовыми параметрами
      */
-    private fun detectUniformCellsBoxesWithParams(bitmap: Bitmap, params: ColorParams): List<BBox> {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun detectUniformCellsBoxesWithParams(image: PlatformImage, params: ColorParams): List<BBox> {
+        val width = image.width
+        val height = image.height
 
         // 1) Маска пурпурных/малиновых эритроцитов
-        val mask = maskUniformCellsWithParams(bitmap, params)
+        val mask = maskUniformCellsWithParams(image, params)
 
         // 2) Морфологические операции для очистки
         var refined = close3x3(mask, width, height, iterations = 2)
@@ -763,7 +759,7 @@ object ImageProcessing {
         val opened = open3x3(refined, width, height, iterations = 1)
 
         // 3) ROI - круговая область интереса
-        val roi = createCircularRoi(bitmap, vThreshold = params.roiVThreshold, marginFraction = params.roiMarginFraction)
+        val roi = createCircularRoi(image, vThreshold = params.roiVThreshold, marginFraction = params.roiMarginFraction)
 
         // 4) Параметры фильтрации для однородных эритроцитов
         val totalPx = width * height
@@ -778,13 +774,13 @@ object ImageProcessing {
     /**
      * Детектор для смешанных типов изображений
      */
-    private fun detectMixedCellsBoxes(bitmap: Bitmap): List<BBox> {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun detectMixedCellsBoxes(image: PlatformImage): List<BBox> {
+        val width = image.width
+        val height = image.height
 
         // Комбинируем маски разных типов
-        val purpleMask = maskPurpleHSV(bitmap)
-        val uniformMask = maskUniformCells(bitmap)
+        val purpleMask = maskPurpleHSV(image)
+        val uniformMask = maskUniformCells(image)
 
         // Объединяем маски
         val combinedMask = BooleanArray(width * height) { i ->
@@ -796,7 +792,7 @@ object ImageProcessing {
         refined = fillHoles(refined, width, height)
         val opened = open3x3(refined, width, height, iterations = 1)
 
-        val roi = createCircularRoi(bitmap, vThreshold = 0.55f, marginFraction = 0.04f)
+        val roi = createCircularRoi(image, vThreshold = 0.55f, marginFraction = 0.04f)
 
         val totalPx = width * height
         val minArea = max(12, totalPx / 180_000)
@@ -810,13 +806,13 @@ object ImageProcessing {
     /**
      * Детектор для смешанных типов изображений с настраиваемыми цветовыми параметрами
      */
-    private fun detectMixedCellsBoxesWithParams(bitmap: Bitmap, params: ColorParams): List<BBox> {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun detectMixedCellsBoxesWithParams(image: PlatformImage, params: ColorParams): List<BBox> {
+        val width = image.width
+        val height = image.height
 
         // Комбинируем маски разных типов
-        val purpleMask = maskPurpleHSV(bitmap)
-        val uniformMask = maskUniformCellsWithParams(bitmap, params)
+        val purpleMask = maskPurpleHSV(image)
+        val uniformMask = maskUniformCellsWithParams(image, params)
 
         // Объединяем маски
         val combinedMask = BooleanArray(width * height) { i ->
@@ -828,7 +824,7 @@ object ImageProcessing {
         refined = fillHoles(refined, width, height)
         val opened = open3x3(refined, width, height, iterations = 1)
 
-        val roi = createCircularRoi(bitmap, vThreshold = 0.55f, marginFraction = 0.04f)
+        val roi = createCircularRoi(image, vThreshold = 0.55f, marginFraction = 0.04f)
 
         val totalPx = width * height
         val minArea = max(12, totalPx / 180_000)
@@ -842,13 +838,12 @@ object ImageProcessing {
     /**
      * Маска для однородных эритроцитов (пурпурные/малиновые)
      */
-    private fun maskUniformCells(bitmap: Bitmap): BooleanArray {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun maskUniformCells(image: PlatformImage): BooleanArray {
+        val width = image.width
+        val height = image.height
         val out = BooleanArray(width * height)
         val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val hsv = FloatArray(3)
+        image.getPixels(pixels)
 
         var i = 0
         while (i < pixels.size) {
@@ -856,7 +851,7 @@ object ImageProcessing {
             val r = (c shr 16) and 0xFF
             val g = (c shr 8) and 0xFF
             val b = c and 0xFF
-            Color.RGBToHSV(r, g, b, hsv)
+            val hsv = HsvUtils.rgbToHsv(r, g, b)
 
             val h = hsv[0] // [0..360)
             val s = hsv[1] // [0..1]
@@ -880,13 +875,12 @@ object ImageProcessing {
     /**
      * Маска для однородных эритроцитов с настраиваемыми цветовыми параметрами
      */
-    private fun maskUniformCellsWithParams(bitmap: Bitmap, params: ColorParams): BooleanArray {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun maskUniformCellsWithParams(image: PlatformImage, params: ColorParams): BooleanArray {
+        val width = image.width
+        val height = image.height
         val out = BooleanArray(width * height)
         val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val hsv = FloatArray(3)
+        image.getPixels(pixels)
 
         var i = 0
         while (i < pixels.size) {
@@ -894,7 +888,7 @@ object ImageProcessing {
             val r = (c shr 16) and 0xFF
             val g = (c shr 8) and 0xFF
             val b = c and 0xFF
-            Color.RGBToHSV(r, g, b, hsv)
+            val hsv = HsvUtils.rgbToHsv(r, g, b)
 
             val h = hsv[0] // [0..360)
             val s = hsv[1] // [0..1]
@@ -987,40 +981,55 @@ object ImageProcessing {
         return boxes
     }
 
-    private fun drawBoxes(src: Bitmap, boxes: List<BBox>): Bitmap {
-        val result = src.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(result)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            color = Color.WHITE
-            strokeWidth = (max(result.width, result.height) / 300f).coerceAtLeast(2f)
-        }
+    private fun drawBoxes(src: PlatformImage, boxes: List<BBox>): PlatformImage {
+        val result = src.copy()
+        val width = result.width
+        val height = result.height
+        val pixels = IntArray(width * height)
+        result.getPixels(pixels)
+
+        val white = 0xFFFFFFFF.toInt()
+
         for (b in boxes) {
-            val rect = RectF(
-                b.minX.toFloat() - 2f,
-                b.minY.toFloat() - 2f,
-                b.maxX.toFloat() + 2f,
-                b.maxY.toFloat() + 2f
-            )
-            canvas.drawOval(rect, paint)
+            val cx = (b.minX + b.maxX) / 2.0
+            val cy = (b.minY + b.maxY) / 2.0
+            val a = max(1.0, (b.maxX - b.minX + 1) / 2.0)
+            val bAxis = max(1.0, (b.maxY - b.minY + 1) / 2.0)
+            val left = max(0, b.minX - 3)
+            val right = min(width - 1, b.maxX + 3)
+            val top = max(0, b.minY - 3)
+            val bottom = min(height - 1, b.maxY + 3)
+
+            for (y in top..bottom) {
+                for (x in left..right) {
+                    val dx = (x - cx) / a
+                    val dy = (y - cy) / bAxis
+                    val f = dx * dx + dy * dy
+                    val distToEllipse = abs(sqrt(f) - 1.0) * min(a, bAxis)
+                    if (distToEllipse < 2) {
+                        pixels[y * width + x] = white
+                    }
+                }
+            }
         }
+
+        result.setPixels(pixels)
         return result
     }
 
-    private fun maskPurpleHSV(bitmap: Bitmap): BooleanArray {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun maskPurpleHSV(image: PlatformImage): BooleanArray {
+        val width = image.width
+        val height = image.height
         val out = BooleanArray(width * height)
         val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val hsv = FloatArray(3)
+        image.getPixels(pixels)
         var i = 0
         while (i < pixels.size) {
             val c = pixels[i]
             val r = (c shr 16) and 0xFF
             val g = (c shr 8) and 0xFF
             val b = c and 0xFF
-            Color.RGBToHSV(r, g, b, hsv)
+            val hsv = HsvUtils.rgbToHsv(r, g, b)
             val h = hsv[0] // [0..360)
             val s = hsv[1] // [0..1]
             val v = hsv[2] // [0..1]
@@ -1035,12 +1044,11 @@ object ImageProcessing {
     /**
      * Маска области обзора (круглая светлая зона). Чуть эродируем, чтобы исключить пограничные клетки.
      */
-    private fun createCircularRoi(bitmap: Bitmap, vThreshold: Float, marginFraction: Float): BooleanArray {
-        val width = bitmap.width
-        val height = bitmap.height
+    private fun createCircularRoi(image: PlatformImage, vThreshold: Float, marginFraction: Float): BooleanArray {
+        val width = image.width
+        val height = image.height
         val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val hsv = FloatArray(3)
+        image.getPixels(pixels)
 
         // Оценим центр и радиус по ярким точкам (внутри круга фон светлый)
         var sumX = 0.0
@@ -1057,7 +1065,7 @@ object ImageProcessing {
                 val r = (c shr 16) and 0xFF
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
-                Color.RGBToHSV(r, g, b, hsv)
+                val hsv = HsvUtils.rgbToHsv(r, g, b)
                 if (hsv[2] >= vThreshold) {
                     sumX += x
                     sumY += y
@@ -1080,11 +1088,11 @@ object ImageProcessing {
                 val r = (c shr 16) and 0xFF
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
-                Color.RGBToHSV(r, g, b, hsv)
+                val hsv = HsvUtils.rgbToHsv(r, g, b)
                 if (hsv[2] >= vThreshold) {
                     val dx = x - cx
                     val dy = y - cy
-                    distances.add(kotlin.math.sqrt(dx * dx + dy * dy))
+                    distances.add(sqrt(dx * dx + dy * dy))
                 }
                 x += step
             }
@@ -1102,12 +1110,10 @@ object ImageProcessing {
             val y2 = i / width
             val dx = x - cx
             val dy = y2 - cy
-            val d = kotlin.math.sqrt(dx * dx + dy * dy)
+            val d = sqrt(dx * dx + dy * dy)
             mask[i] = d <= (radius - margin)
             i++
         }
         return mask
     }
 }
-
-
