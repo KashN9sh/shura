@@ -554,10 +554,13 @@ private fun BatchPlaceholderScreen(
                 }
             }
             if (batchResults.isNotEmpty()) {
-                Text(
-                    if (isProcessing) "Обработано: ${batchResults.size}" else "Готово. Настройте параметры по каждому файлу — превью и счёт пересчитаются автоматически.",
-                    style = MaterialTheme.typography.titleSmall
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        if (isProcessing) "Обработано: ${batchResults.size}" else "Готово. Настройте параметры по каждому файлу — превью и счёт пересчитаются автоматически.",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text("Всего эритроцитов: ${batchResults.sumOf { it.cellCount }}", style = MaterialTheme.typography.titleMedium)
+                }
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
