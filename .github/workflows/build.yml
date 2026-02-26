@@ -67,6 +67,8 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     needs: [desktop-mac]
+    permissions:
+      contents: write
     steps:
       - name: Download DMG
         uses: actions/download-artifact@v4
