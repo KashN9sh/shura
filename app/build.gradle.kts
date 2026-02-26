@@ -114,8 +114,11 @@ compose.desktop {
         mainClass = "com.example.rbccounter.desktop.MainKt"
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg)
-            packageName = "RbcCounter"
+            packageName = "BIMBO RBCcounter"
             packageVersion = "1.0.0"
+            macOS {
+                iconFile.set(project.file("icon/icon.icns"))
+            }
         }
     }
 }
