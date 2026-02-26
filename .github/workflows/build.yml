@@ -3,6 +3,8 @@ name: Build
 on:
   push:
     branches: [main, master]
+    tags:
+      - "v*"
   pull_request:
     branches: [main, master]
 
@@ -59,3 +61,25 @@ jobs:
         with:
           name: bimbo-rbccounter-mac-dmg
           path: app/build/compose/binaries/main/dmg/*.dmg
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [android, desktop-mac]
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.apk
+            *.dmg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
